@@ -22,7 +22,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function geminiGenerate(
   apiKey = process.env.GEMINI_API_KEY,
-  models = (process.env.GEMINI_MODELS ?? 'gemini-3.5-flash,gemini-3.8-flash').split(',').map((m) => m.trim()),
+  models = (process.env.GEMINI_MODELS ?? 'gemini-3.5-flash,gemini-3.5-flash-lite,gemini-flash-lite-latest').split(',').map((m) => m.trim()),
   minGapMs = Number(process.env.GEMINI_MIN_GAP_MS ?? 1200),
 ): Generate {
   let queue: Promise<unknown> = Promise.resolve();
@@ -32,7 +32,7 @@ export function geminiGenerate(
     const res = await fetch(`${BASE}/models/${model}:generateContent`, {
       method: 'POST',
       headers: { 'x-goog-api-key': apiKey!, 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(40_000),
+      signal: AbortSignal.timeout(25_000),
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: req.system }] },
         contents: req.contents,

@@ -4,6 +4,8 @@ An AI sales agent that turns an overseas buyer's enquiry into an approved, margi
 
 Built for the PayPal AI Hackathon ("Build what's next with PayPal and AI").
 
+**Live demo:** https://export-deal-desk.onrender.com (the free instance sleeps when idle, so the first load can take about a minute).
+
 ## The problem
 
 Small Indian exporters lose orders between "a buyer is interested" and "the buyer has paid". Enquiries arrive incomplete, buyers push for discounts, and a quote sent in a hurry can give away the margin. Export Deal Desk handles that conversation for the seller without ever being allowed to break the seller's commercial rules.
@@ -41,7 +43,7 @@ Everything runs against the PayPal Sandbox. This project does not claim that liv
 
 ## How AI is used
 
-- **Model**: Google Gemini (`gemini-3.5-flash`, falling back to `gemini-3.8-flash` when overloaded), called directly over its REST API with function calling (`server/llm.ts`).
+- **Model**: Google Gemini (`gemini-3.5-flash`, falling back to its lite variants when overloaded or out of quota), called directly over its REST API with function calling (`server/llm.ts`). A free-tier key allows only about 20 requests per day per model and one negotiation uses 10 to 15, so use a key with billing enabled for anything beyond a single trial.
 - **Seller agent** tools: `evaluate_terms`, `propose_offer`, and after approval `send_paypal_invoice`.
 - **Buyer agent** tools: `accept_offer`, `walk_away`.
 - **Development**: the code was written with Claude Code, Anthropic's AI coding assistant, directed and reviewed by the author.
