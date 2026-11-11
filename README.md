@@ -1,4 +1,4 @@
-# Export Deal Desk
+# TradeThread · AI Export Deal Desk
 
 An AI sales agent that turns an overseas buyer's enquiry into an approved, margin-safe offer and a paid PayPal invoice.
 
@@ -8,7 +8,7 @@ Built for the PayPal AI Hackathon ("Build what's next with PayPal and AI").
 
 ## The problem
 
-Small Indian exporters lose orders between "a buyer is interested" and "the buyer has paid". Enquiries arrive incomplete, buyers push for discounts, and a quote sent in a hurry can give away the margin. Export Deal Desk handles that conversation for the seller without ever being allowed to break the seller's commercial rules.
+Small Indian exporters lose orders between "a buyer is interested" and "the buyer has paid". Enquiries arrive incomplete, buyers push for discounts, and a quote sent in a hurry can give away the margin. TradeThread handles that conversation for the seller without ever being allowed to break the seller's commercial rules.
 
 ## What it does
 
@@ -74,13 +74,17 @@ Open http://localhost:3000. For development with hot reload, use `npm run dev` a
 
 ## Try the demo
 
-1. Click **Start negotiation**. Two agents negotiate for a minute or two. Red lines show attempts the pricing rules blocked; green lines show checks that passed.
-2. When the buyer agent accepts, click **Approve offer** in the "Seller approval required" panel.
-3. The seller agent sends a Sandbox PayPal invoice for the advance. Click **Open pay link**.
-4. Pay with a PayPal Sandbox **personal** account. If your Sandbox merchant is Indian, the buyer account must be from another country (for example the United States), because PayPal India does not accept domestic payments.
-5. Within about 15 seconds the advance shows as paid and a balance invoice appears. Pay it the same way and the order shows **Paid in full**.
+The landing page (`/`) replays a recorded Sandbox deal and explains the flow. The working app is the deal desk at `/app`.
 
-You can also change the buyer agent's mandate before starting, or use **Send enquiry** to negotiate as a human buyer.
+1. Open the deal desk and click **Start negotiation** on the **Two AI agents** tab. The two agents negotiate for about a minute. The conversation shows each pricing check, and the price rail plots every price that was asked for, blocked, offered or agreed against the seller's list price and lowest allowed price.
+2. When the buyer agent accepts, click **Approve offer** in the approval panel, which shows the total, discount and margin.
+3. The seller agent sends a Sandbox PayPal invoice for the advance. Click **Pay** next to it.
+4. Pay with a PayPal Sandbox **personal** account. If your Sandbox merchant is Indian, the buyer account must be from another country (for example the United States), because PayPal India does not accept domestic payments.
+5. Within about 15 seconds the advance shows as paid and a balance invoice appears. Pay it the same way and the deal reaches **Paid**.
+
+You can also change the buyer agent's mandate before starting, or switch to the **I am the buyer** tab to negotiate as a human buyer.
+
+All companies, people and products in the demo are fictional.
 
 ## Tests
 
@@ -99,7 +103,7 @@ npm test
 ## Limitations
 
 - One product line per offer.
-- A single demo seller with no login; the seller and buyer views share one page.
+- A single demo seller with no login; the seller and buyer views share one deal page.
 - Local runs with the embedded database need about 1 GB of free memory.
 - A shared demo is limited to 30 new deals per hour to protect the AI key.
 
@@ -114,7 +118,10 @@ npm test
 | `server/paypal.ts` | PayPal REST client |
 | `server/llm.ts` | Gemini client with fallback and pacing |
 | `server/schema.sql` | Database schema |
-| `web/src/App.tsx` | Deal room interface |
+| `web/src/Landing.tsx` | Landing page with the replayed deal |
+| `web/src/App.tsx` | Deal desk and deal pages |
+| `web/src/ui.tsx` | Shared routing, branding and the price rail |
+| `web/src/styles.css` | Design system |
 
 ## License
 
