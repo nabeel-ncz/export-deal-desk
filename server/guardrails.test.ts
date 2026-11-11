@@ -5,6 +5,8 @@ import type { Content, Generate } from './llm.ts';
 import { SELLER_TOOLS, BUYER_TOOLS } from './agents.ts';
 import { checkMandate, evaluate, limitsFor, splitDeposit, type Product, type SellerPolicy } from './pricing.ts';
 import { DEMO_MANDATE, acceptOffer, addMessage, buyerRespond, createThread, decideQuote, getThread, sellerRespond } from './threads.ts';
+import type { PayPal } from './paypal.ts';
+import { closeDeal, handleWebhook, issueInvoice, refreshThreadPayments, voidQuote } from './payments.ts';
 
 const policy: SellerPolicy = { maxDiscountPct: 5, depositPct: 30, acceptedIncoterms: ['FOB', 'CIF'] };
 const basket: Product = {
@@ -107,7 +109,7 @@ describe('agent guardrails', () => {
     expect((await quotes()).map((q) => [q.version, q.status, Number(q.total)])).toEqual([[1, 'superseded', 2370], [2, 'draft', 2295]]);
   });
 
-  it('no agent has a tool that approves a deal or takes payment', () => {
+  it('no negotiating agent has a tool that approves a deal or takes payment', () => {
     const names = [...SELLER_TOOLS, ...BUYER_TOOLS].map((t) => t.name);
     expect(names.sort()).toEqual(['accept_offer', 'evaluate_terms', 'propose_offer', 'walk_away']);
   });
@@ -147,5 +149,125 @@ describe('agent guardrails', () => {
     await sellerRespond(db, threadId, scripted(call('propose_offer', offerArgs(15.3)), say('Offer.')));
     const result = await buyerRespond(db, threadId, scripted(call('accept_offer', { message: 'We accept.' })));
     expect(result.decision).toBe('accept');
+  });
+});
+
+/** In-memory stand-in for PayPal: tests flip an invoice to PAID the way a buyer's payment would. */
+function fakePayPal() {
+  const invoices = new Map<string, string>();
+  const state = { invoices, signatureValid: true };
+  const api: PayPal = {
+    createAndSendInvoice: async () => {
+      const id = `INV2-FAKE-${invoices.size + 1}`;
+      invoices.set(id, 'UNPAID');
+      return { id, status: 'UNPAID', payUrl: `https://pay.example/${id}` };
+    },
+    getInvoice: async (id) => ({ id, status: invoices.get(id)!, paidAmount: 0 }),
+    cancelInvoice: async (id) => void invoices.set(id, 'CANCELLED'),
+    verifyWebhook: async () => state.signatureValid,
+  };
+  return { ...state, api, state };
+}
+
+describe('payments', () => {
+  let db: Db;
+  let threadId: number;
+  let quoteId: number;
+  let pp: ReturnType<typeof fakePayPal>;
+  const view = async () => getThread(db, threadId) as Promise<any>;
+  const paidEvent = (eventId: string, invoiceId: string) =>
+    JSON.stringify({ id: eventId, event_type: 'INVOICING.INVOICE.PAID', resource: { invoice: { id: invoiceId } } });
+
+  beforeEach(async () => {
+    db = await openDb({ memory: true });
+    await seed(db);
+    pp = fakePayPal();
+    threadId = await createThread(db, { mode: 'agent', buyerName: 'Dana', mandate: DEMO_MANDATE });
+    await addMessage(db, threadId, 'buyer_agent', 'We want 150 baskets.');
+    await sellerRespond(db, threadId, scripted(call('propose_offer', offerArgs(15.3)), say('Offer.')));
+    quoteId = await acceptOffer(db, threadId, 'buyer_agent');
+  });
+
+  it('a quote the seller has not approved cannot be invoiced', async () => {
+    await expect(issueInvoice(db, pp.api, quoteId, 'note')).rejects.toThrow(/Only a quote approved by the seller/);
+    expect(pp.invoices.size).toBe(0);
+  });
+
+  it('after approval the seller agent sends the advance invoice through its tool', async () => {
+    await decideQuote(db, quoteId, 'approve', 'seller');
+    await closeDeal(db, pp.api, scripted(call('send_paypal_invoice', { note: 'Thank you!' }), say('Invoice sent.')), quoteId);
+    const v = await view();
+    expect(v.invoices.map((i: any) => [i.kind, Number(i.amount), i.status])).toEqual([['deposit', 688.5, 'UNPAID']]);
+    expect(v.thread.status).toBe('invoiced');
+  });
+
+  it('the invoice is still issued, once, if the model never calls the tool', async () => {
+    await decideQuote(db, quoteId, 'approve', 'seller');
+    await closeDeal(db, pp.api, scripted(say('All done!')), quoteId);
+    expect((await view()).invoices).toHaveLength(1);
+    await expect(issueInvoice(db, pp.api, quoteId, 'again')).rejects.toThrow();
+  });
+
+  describe('with an advance invoice issued', () => {
+    let advanceId: string;
+    beforeEach(async () => {
+      await decideQuote(db, quoteId, 'approve', 'seller');
+      advanceId = (await issueInvoice(db, pp.api, quoteId, 'note')).paypalInvoiceId;
+    });
+
+    it('an unpaid invoice does not mark the order paid', async () => {
+      await refreshThreadPayments(db, pp.api, threadId);
+      const v = await view();
+      expect(v.thread.status).toBe('invoiced');
+      expect(v.invoices).toHaveLength(1);
+    });
+
+    it('an unverified webhook changes nothing and is not recorded', async () => {
+      pp.invoices.set(advanceId, 'PAID');
+      pp.state.signatureValid = false;
+      expect(await handleWebhook(db, pp.api, {}, paidEvent('WH-1', advanceId))).toBe('rejected');
+      expect((await view()).invoices[0].status).toBe('UNPAID');
+      expect(await db.query('SELECT 1 FROM payment_events')).toHaveLength(0);
+    });
+
+    it('a verified webhook claiming PAID is ignored when PayPal still reports the invoice unpaid', async () => {
+      expect(await handleWebhook(db, pp.api, {}, paidEvent('WH-1', advanceId))).toBe('processed');
+      expect((await view()).invoices[0].status).toBe('UNPAID');
+    });
+
+    it('a paid advance issues the balance invoice, and a duplicate webhook does not issue another', async () => {
+      pp.invoices.set(advanceId, 'PAID');
+      expect(await handleWebhook(db, pp.api, {}, paidEvent('WH-1', advanceId))).toBe('processed');
+      expect(await handleWebhook(db, pp.api, {}, paidEvent('WH-1', advanceId))).toBe('duplicate');
+      await refreshThreadPayments(db, pp.api, threadId);
+      const v = await view();
+      expect(v.invoices.map((i: any) => [i.kind, Number(i.amount), i.status])).toEqual([['deposit', 688.5, 'PAID'], ['balance', 1606.5, 'UNPAID']]);
+      expect(v.thread.status).toBe('invoiced');
+    });
+
+    it('the order is paid only when PayPal confirms both invoices', async () => {
+      pp.invoices.set(advanceId, 'PAID');
+      await refreshThreadPayments(db, pp.api, threadId);
+      const balanceId = (await view()).invoices[1].paypal_invoice_id;
+      pp.invoices.set(balanceId, 'PAID');
+      await refreshThreadPayments(db, pp.api, threadId);
+      const v = await view();
+      expect(v.thread.status).toBe('paid');
+      expect(v.quotes[0].status).toBe('paid');
+    });
+
+    it('withdrawing the quote cancels its unpaid PayPal invoice and reopens the deal', async () => {
+      await voidQuote(db, pp.api, quoteId);
+      expect(pp.invoices.get(advanceId)).toBe('CANCELLED');
+      const v = await view();
+      expect(v.invoices[0].status).toBe('CANCELLED');
+      expect(v.thread.status).toBe('open');
+    });
+
+    it('a quote with a received payment cannot be withdrawn', async () => {
+      pp.invoices.set(advanceId, 'PAID');
+      await refreshThreadPayments(db, pp.api, threadId);
+      await expect(voidQuote(db, pp.api, quoteId)).rejects.toThrow(/already been received/);
+    });
   });
 });

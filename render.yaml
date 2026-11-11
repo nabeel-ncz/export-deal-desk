@@ -1,0 +1,20 @@
+# Render blueprint: one web service runs the API and serves the built React app.
+# The database is embedded Postgres (PGlite) on the instance's disk, so there is nothing else to provision.
+# Demo data is re-seeded whenever the instance restarts.
+services:
+  - type: web
+    name: export-deal-desk
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.20.0
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

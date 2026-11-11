@@ -124,6 +124,42 @@ export async function sellerTurn(p: {
   };
 }
 
+/** Offered to the seller agent only after the human seller has approved a quote. It carries no amounts. */
+export const INVOICE_TOOL: ToolDecl = {
+  name: 'send_paypal_invoice',
+  description: 'Create and send the PayPal invoice for the offer the human seller approved. Amounts are fixed by that offer; you supply only a short note for the buyer.',
+  parameters: { type: 'OBJECT', properties: { note: { type: 'STRING', description: 'One or two sentences shown to the buyer on the invoice' } }, required: ['note'] },
+};
+
+export async function sellerClosingTurn(p: {
+  offer: Offer; transcript: Turn[]; generate: Generate;
+  issueInvoice: (note: string) => Promise<Record<string, unknown>>;
+}): Promise<{ text: string; trace: TraceEntry[] }> {
+  const system = `You are an export sales agent closing a deal. The human seller has approved this offer: ${describeOffer(p.offer)}
+Call send_paypal_invoice once with a short, warm note for the buyer. Then tell the buyer in plain text, under 60 words, that the PayPal invoice has been sent, stating the amount the tool returned and what happens next. Do not invent amounts or links.`;
+  const contents: Content[] = [
+    ...p.transcript.map((t): Content => ({ role: t.role === 'buyer' ? 'user' : 'model', parts: [{ text: t.text }] })),
+    { role: 'user', parts: [{ text: `[The seller has approved offer v${p.offer.version}. Send the PayPal invoice now.]` }] },
+  ];
+  const trace: TraceEntry[] = [];
+  for (let step = 0; step < 3; step++) {
+    const reply = await p.generate({ system, contents, tools: [INVOICE_TOOL], temperature: 0.4 });
+    const calls = callsOf(reply);
+    if (!calls.length) return { text: textOf(reply) || 'Your PayPal invoice has been sent.', trace };
+    contents.push(reply);
+    const responses: Part[] = [];
+    for (const fc of calls) {
+      const result = fc.name === INVOICE_TOOL.name
+        ? await p.issueInvoice(String(fc.args?.note ?? '')).catch((e: Error) => ({ sent: false, error: e.message }))
+        : { sent: false, error: `No tool named ${fc.name}.` };
+      trace.push({ tool: fc.name, args: fc.args ?? {}, result });
+      responses.push(respond(fc, result));
+    }
+    contents.push({ role: 'user', parts: responses });
+  }
+  return { text: 'Your PayPal invoice has been sent.', trace };
+}
+
 function buyerSystem(m: BuyerMandate) {
   return `You are ${m.contactName}, purchasing agent for ${m.company} (${m.country}). You are negotiating by chat with an exporter's sales agent.
 

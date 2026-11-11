@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface Seller { name: string; city: string; country: string; max_discount_pct: string; deposit_pct: string; accepted_incoterms: string[] }
-interface Product { id: number; sku: string; name: string; list_price: string; min_price: string; moq: number; lead_time_days: number }
+interface Product { id: number; sku: string; name: string; list_price: string; lowest_price: number; moq: number; lead_time_days: number }
 interface ThreadRow { id: number; buyer_name: string; buyer_company: string | null; mode: 'human' | 'agent'; status: string }
 interface Trace { tool: string; args: Record<string, any>; result: Record<string, any> }
 interface Offer { version: number; quantity: number; unitPrice: number; total: number; incoterm: string; deliveryDays: number; depositPct: number; depositAmount: number; productName: string }
@@ -10,7 +10,9 @@ interface Quote {
   id: number; version: number; status: string; incoterm: string; discount_pct: string; total: string; margin_pct: string;
   deposit_pct: string; delivery_days: number; quantity: number; unit_price: string; product_name: string;
 }
-interface Detail { thread: ThreadRow; messages: Msg[]; quotes: Quote[]; running: boolean }
+interface Invoice { id: number; paypal_invoice_id: string; kind: 'full' | 'deposit' | 'balance'; amount: string; status: string; pay_url: string | null }
+interface Detail { thread: ThreadRow; messages: Msg[]; quotes: Quote[]; invoices: Invoice[]; running: boolean }
+const KIND = { full: 'Full payment', deposit: 'Advance', balance: 'Balance' };
 interface Mandate { quantity: number; targetUnitPrice: number; maxUnitPrice: number; maxDeliveryDays: number }
 
 const usd = (v: string | number) => `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -29,6 +31,14 @@ const STATUS: Record<string, string> = {
 };
 
 function TraceLine({ t }: { t: Trace }) {
+  if (t.tool === 'send_paypal_invoice') {
+    const sent = t.result.sent === true;
+    return (
+      <div className={`trace ${sent ? 'passed' : 'blocked'}`}>
+        {sent ? `PayPal invoice sent by the agent${t.result.amount ? `: ${usd(t.result.amount)} (${KIND[t.result.kind as keyof typeof KIND] ?? t.result.kind})` : ''}` : `PayPal invoice not sent — ${t.result.error ?? ''}`}
+      </div>
+    );
+  }
   const blocked = t.result.accepted === false;
   const terms = t.args.unit_price !== undefined ? `${t.args.quantity} units at ${usd(t.args.unit_price)}` : '';
   const reasons: string[] = (t.result.violations ?? []).map((v: { message: string }) => v.message).concat(t.result.reasons ?? []);
@@ -74,8 +84,17 @@ function DealRoom({ id, onChange }: { id: number; onChange: () => void }) {
   const act = (path: string, body: unknown) =>
     api(path, body).then(() => { setError(null); load(); onChange(); }).catch((e: Error) => setError(e.message));
 
+  // While an invoice is unpaid, ask the server to re-check its status with PayPal (covers a late or missing webhook).
+  const awaitingPayment = d?.thread.status === 'invoiced';
+  useEffect(() => {
+    if (!awaitingPayment) return;
+    const t = setInterval(() => { api(`/api/threads/${id}/refresh-payment`, {}).catch(() => undefined); }, 10_000);
+    return () => clearInterval(t);
+  }, [awaitingPayment, id]);
+
   if (!d) return <section className="card tight"><p className="muted">{error ?? 'Loading deal…'}</p></section>;
-  const { thread, messages, quotes, running } = d;
+  const { thread, messages, quotes, invoices, running } = d;
+  const invoiced = quotes.find((q) => q.status === 'invoiced');
   const pending = quotes.find((q) => q.status === 'pending_approval');
   const approved = quotes.find((q) => q.status === 'approved');
   const draft = quotes.find((q) => q.status === 'draft');
@@ -125,7 +144,39 @@ function DealRoom({ id, onChange }: { id: number; onChange: () => void }) {
       {approved && (
         <section className="card tight">
           <h2>Approved: {usd(approved.total)}</h2>
-          <p className="muted">Offer v{approved.version} is approved. The PayPal invoice step is not built yet.</p>
+          <p className="muted">Offer v{approved.version} is approved. The seller agent is sending the PayPal invoice…</p>
+        </section>
+      )}
+      {invoices.length > 0 && (
+        <section className="card tight">
+          <h2>PayPal invoices {thread.status === 'paid' && <span className="chip ok">Paid in full</span>}</h2>
+          <div className="scroll">
+            <table>
+              <thead><tr><th>Type</th><th className="num">Amount</th><th>Status</th><th>PayPal invoice</th><th></th></tr></thead>
+              <tbody>
+                {invoices.map((i) => (
+                  <tr key={i.id}>
+                    <td>{KIND[i.kind]}</td>
+                    <td className="num">{usd(i.amount)}</td>
+                    <td><span className={`chip ${i.status === 'PAID' ? 'ok' : i.status === 'CANCELLED' ? 'bad' : ''}`}>{i.status}</span></td>
+                    <td>{i.paypal_invoice_id}</td>
+                    <td>{i.pay_url && i.status !== 'PAID' && i.status !== 'CANCELLED' && <a href={i.pay_url} target="_blank" rel="noreferrer">Open pay link</a>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {thread.status === 'invoiced' && (
+            <>
+              <p className="muted" style={{ marginBottom: 0 }}>Sandbox: pay with a test buyer account from outside India. Status changes only after PayPal confirms the payment.</p>
+              <div className="actions">
+                <button className="ghost" onClick={() => act(`/api/threads/${id}/refresh-payment`, {})}>Check payment now</button>
+                {invoiced && !invoices.some((i) => i.status === 'PAID') && (
+                  <button className="danger" onClick={() => act(`/api/quotes/${invoiced.id}/void`, {})}>Cancel invoice and reopen deal</button>
+                )}
+              </div>
+            </>
+          )}
         </section>
       )}
     </div>
@@ -214,10 +265,10 @@ export function App() {
               </div>
               <div className="scroll" style={{ marginTop: 12 }}>
                 <table>
-                  <thead><tr><th>SKU</th><th>Product</th><th className="num">List</th><th className="num">Floor</th><th className="num">Min order</th><th className="num">Lead time</th></tr></thead>
+                  <thead><tr><th>SKU</th><th>Product</th><th className="num">List</th><th className="num">Lowest allowed</th><th className="num">Min order</th><th className="num">Lead time</th></tr></thead>
                   <tbody>
                     {catalog.products.map((p) => (
-                      <tr key={p.id}><td>{p.sku}</td><td>{p.name}</td><td className="num">{usd(p.list_price)}</td><td className="num">{usd(p.min_price)}</td><td className="num">{p.moq}</td><td className="num">{p.lead_time_days} days</td></tr>
+                      <tr key={p.id}><td>{p.sku}</td><td>{p.name}</td><td className="num">{usd(p.list_price)}</td><td className="num">{usd(p.lowest_price)}</td><td className="num">{p.moq}</td><td className="num">{p.lead_time_days} days</td></tr>
                     ))}
                   </tbody>
                 </table>

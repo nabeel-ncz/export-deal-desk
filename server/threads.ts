@@ -50,7 +50,7 @@ const QUOTE_SQL = `
   SELECT q.*, i.quantity, i.unit_price, p.sku, p.name AS product_name
   FROM quote_drafts q JOIN quote_items i ON i.quote_id = q.id JOIN products p ON p.id = i.product_id`;
 
-function toOffer(r: Row): Offer {
+export function toOffer(r: Row): Offer {
   const total = Number(r.total), depositPct = Number(r.deposit_pct);
   return {
     version: r.version, sku: r.sku, productName: r.product_name,
@@ -66,7 +66,13 @@ async function liveQuote(db: Db, threadId: number): Promise<Row | null> {
   return r ?? null;
 }
 
-async function audit(db: Db, threadId: number | null, actor: string, action: string, detail: unknown = {}) {
+export async function quoteWithItem(db: Db, quoteId: number): Promise<Row> {
+  const [r] = await db.query<Row>(`${QUOTE_SQL} WHERE q.id = $1`, [quoteId]);
+  if (!r) throw new Error(`Quote ${quoteId} not found`);
+  return r;
+}
+
+export async function audit(db: Db, threadId: number | null, actor: string, action: string, detail: unknown = {}) {
   await db.query('INSERT INTO audit_logs (thread_id, actor, action, detail) VALUES ($1, $2, $3, $4::text::jsonb)',
     [threadId, actor, action, JSON.stringify(detail)]);
 }
@@ -86,7 +92,7 @@ export async function createThread(db: Db, t: { mode: 'human' | 'agent'; buyerNa
   return row.id;
 }
 
-async function transcriptOf(db: Db, threadId: number): Promise<Turn[]> {
+export async function transcriptOf(db: Db, threadId: number): Promise<Turn[]> {
   const rows = await db.query<Row>(`SELECT role, content, tool_trace FROM messages WHERE thread_id = $1 AND role <> 'system' ORDER BY id`, [threadId]);
   return rows.map((m) => ({ role: m.role.startsWith('buyer') ? 'buyer' : 'seller', text: m.content, offer: m.tool_trace?.offer ?? null }));
 }
@@ -171,6 +177,7 @@ export async function decideQuote(db: Db, quoteId: number, decision: 'approve' |
     await addMessage(db, quote.thread_id, 'system', `Seller rejected offer v${quote.version}. The negotiation is open again.`);
   }
   await audit(db, quote.thread_id, approver, decision === 'approve' ? 'quote_approved' : 'quote_rejected', { quoteId, version: quote.version });
+  return quote.thread_id as number;
 }
 
 /** Agent-to-agent negotiation: buyer agent and seller agent alternate until accept, walk-away or the round limit. */
@@ -208,5 +215,8 @@ export async function getThread(db: Db, threadId: number) {
   const thread = await threadRow(db, threadId);
   const messages = await db.query('SELECT id, role, content, tool_trace, created_at FROM messages WHERE thread_id = $1 ORDER BY id', [threadId]);
   const quotes = await db.query(`${QUOTE_SQL} WHERE q.thread_id = $1 ORDER BY q.version`, [threadId]);
-  return { thread, messages, quotes, running: running.has(threadId) };
+  const invoices = await db.query(
+    `SELECT pi.id, pi.quote_id, pi.paypal_invoice_id, pi.kind, pi.amount, pi.status, pi.pay_url
+     FROM paypal_invoices pi JOIN quote_drafts q ON q.id = pi.quote_id WHERE q.thread_id = $1 ORDER BY pi.id`, [threadId]);
+  return { thread, messages, quotes, invoices, running: running.has(threadId) };
 }

@@ -34,7 +34,9 @@ export async function openDb(opts: { url?: string; memory?: boolean } = {}): Pro
     };
   } else {
     const { PGlite } = await import('@electric-sql/pglite');
-    const dir = opts.memory ? undefined : join(here, '..', '.data', 'pglite');
+    // PGLITE_DIR=memory keeps everything in RAM; any other value is a directory to store the data in.
+    const custom = process.env.PGLITE_DIR;
+    const dir = opts.memory || custom === 'memory' ? undefined : custom || join(here, '..', '.data', 'pglite');
     if (dir) mkdirSync(dir, { recursive: true });
     const lite = new PGlite(dir);
     await lite.waitReady;
