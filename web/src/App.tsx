@@ -144,7 +144,14 @@ function DealRoom({ id, onChange }: { id: number; onChange: () => void }) {
       {approved && (
         <section className="card tight">
           <h2>Approved: {usd(approved.total)}</h2>
-          <p className="muted">Offer v{approved.version} is approved. The seller agent is sending the PayPal invoice…</p>
+          {running
+            ? <p className="muted">Offer v{approved.version} is approved. The seller agent is sending the PayPal invoice…</p>
+            : (
+              <>
+                <p className="muted">Offer v{approved.version} is approved, but its PayPal invoice has not been sent. See the last message above for the reason.</p>
+                <button onClick={() => act(`/api/quotes/${approved.id}/invoice`, {})}>Send PayPal invoice</button>
+              </>
+            )}
         </section>
       )}
       {invoices.length > 0 && (

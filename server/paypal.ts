@@ -15,7 +15,11 @@ export interface PayPal {
   verifyWebhook(headers: Record<string, string | string[] | undefined>, rawBody: string): Promise<boolean>;
 }
 
-export function paypalClient(env: NodeJS.ProcessEnv = process.env): PayPal & { ensureWebhook(url: string): Promise<string> } {
+export function paypalClient(env: NodeJS.ProcessEnv = process.env): PayPal & {
+  ensureWebhook(url: string): Promise<string>;
+  /** Signs in to PayPal; throws if the credentials are missing or wrong. */
+  checkCredentials(): Promise<void>;
+} {
   const base = env.PAYPAL_API_BASE ?? 'https://api-m.sandbox.paypal.com';
   let webhookId = env.PAYPAL_WEBHOOK_ID;
   let token: { value: string; expires: number } | null = null;
@@ -99,6 +103,10 @@ export function paypalClient(env: NodeJS.ProcessEnv = process.env): PayPal & { e
       const body = `${JSON.stringify(fields).slice(0, -1)},"webhook_event":${rawBody}}`;
       const result = await call('/v1/notifications/verify-webhook-signature', 'POST', body);
       return result.verification_status === 'SUCCESS';
+    },
+
+    async checkCredentials() {
+      await accessToken();
     },
 
     /** Register this deployment's webhook URL with PayPal, or reuse the existing registration for it. */

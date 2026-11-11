@@ -8,7 +8,7 @@ import { seed } from './seed.ts';
 import { geminiGenerate } from './llm.ts';
 import {
   DEMO_MANDATE, acceptOffer, addMessage, createThread, decideQuote, getThread, inBackground,
-  listThreads, loadCatalog, normaliseMandate, runAgentNegotiation, sellerRespond,
+  listThreads, loadCatalog, normaliseMandate, quoteWithItem, runAgentNegotiation, sellerRespond,
 } from './threads.ts';
 import { limitsFor } from './pricing.ts';
 import { paypalClient } from './paypal.ts';
@@ -39,6 +39,7 @@ app.get('/api/health', async () => {
     database: db.kind,
     products,
     paypalConfigured: Boolean(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET),
+    paypalSignIn, // "ok" only after PayPal has actually accepted the credentials
     geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
   };
 });
@@ -66,6 +67,12 @@ function allowNewDeal() {
 
 const generate = geminiGenerate();
 const paypal = paypalClient();
+
+// Having keys set is not the same as the keys working, so sign in once at startup and report the result.
+let paypalSignIn: 'checking' | 'ok' | 'failed' = 'checking';
+paypal.checkCredentials()
+  .then(() => { paypalSignIn = 'ok'; })
+  .catch((e: Error) => { paypalSignIn = 'failed'; app.log.error(`PayPal credentials rejected: ${e.message}`); });
 const idOf = (req: { params: unknown }) => Number((req.params as { id: string }).id);
 const bodyOf = (req: { body: unknown }) => (req.body ?? {}) as Record<string, any>;
 
@@ -123,6 +130,15 @@ app.post('/api/quotes/:id/decision', async (req, reply) => {
   const threadId = await decideQuote(db, quoteId, decision, 'seller');
   // Approval is what unlocks invoicing: only now does the seller agent get the PayPal tool.
   if (decision === 'approve') inBackground(db, threadId, () => closeDeal(db, paypal, generate, quoteId));
+  return { ok: true };
+});
+
+// Retry for an approved quote whose invoice could not be sent (for example PayPal was unreachable).
+app.post('/api/quotes/:id/invoice', async (req, reply) => {
+  const quoteId = idOf(req);
+  const quote = await quoteWithItem(db, quoteId);
+  if (quote.status !== 'approved') return reply.code(409).send({ error: `Quote is ${quote.status}. Only an approved quote without an invoice can be invoiced.` });
+  if (!inBackground(db, quote.thread_id, () => closeDeal(db, paypal, generate, quoteId))) return reply.code(409).send({ error: 'The invoice is already being sent.' });
   return { ok: true };
 });
 
