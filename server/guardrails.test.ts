@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDb, type Db } from './db.ts';
 import { seed } from './seed.ts';
 import type { Content, Generate } from './llm.ts';
@@ -7,6 +7,22 @@ import { checkMandate, evaluate, limitsFor, splitDeposit, type Product, type Sel
 import { DEMO_MANDATE, acceptOffer, addMessage, buyerRespond, createThread, decideQuote, getThread, sellerRespond } from './threads.ts';
 import type { PayPal } from './paypal.ts';
 import { closeDeal, handleWebhook, issueInvoice, refreshThreadPayments, voidQuote } from './payments.ts';
+
+/**
+ * A clean, seeded database per test. By default it is the embedded in-memory one.
+ * Set TEST_DATABASE_URL to run the same tests on a real Postgres server; that database is wiped before every test,
+ * so it must be a scratch database and never the one in DATABASE_URL.
+ */
+async function freshDb(): Promise<Db> {
+  const url = process.env.TEST_DATABASE_URL;
+  const db = await openDb(url ? { url } : { memory: true });
+  if (url) {
+    await db.exec(`TRUNCATE payment_events, paypal_invoices, quote_items, quote_drafts, messages, audit_logs,
+      buyer_threads, products, sellers RESTART IDENTITY CASCADE`);
+  }
+  await seed(db);
+  return db;
+}
 
 const policy: SellerPolicy = { maxDiscountPct: 5, depositPct: 30, acceptedIncoterms: ['FOB', 'CIF'] };
 const basket: Product = {
@@ -82,12 +98,12 @@ const offerArgs = (unit_price: number) => ({ sku: 'MW-BSK-01', quantity: 150, un
 
 describe('agent guardrails', () => {
   let db: Db;
+  afterEach(() => db?.close());
   let threadId: number;
   const quotes = async () => (await getThread(db, threadId)).quotes as any[];
 
   beforeEach(async () => {
-    db = await openDb({ memory: true });
-    await seed(db);
+    db = await freshDb();
     threadId = await createThread(db, { mode: 'agent', buyerName: 'Dana', mandate: DEMO_MANDATE });
     await addMessage(db, threadId, 'buyer_agent', 'We want 150 baskets at $13.60.');
   });
@@ -171,6 +187,7 @@ function fakePayPal() {
 
 describe('payments', () => {
   let db: Db;
+  afterEach(() => db?.close());
   let threadId: number;
   let quoteId: number;
   let pp: ReturnType<typeof fakePayPal>;
@@ -179,8 +196,7 @@ describe('payments', () => {
     JSON.stringify({ id: eventId, event_type: 'INVOICING.INVOICE.PAID', resource: { invoice: { id: invoiceId } } });
 
   beforeEach(async () => {
-    db = await openDb({ memory: true });
-    await seed(db);
+    db = await freshDb();
     pp = fakePayPal();
     threadId = await createThread(db, { mode: 'agent', buyerName: 'Dana', mandate: DEMO_MANDATE });
     await addMessage(db, threadId, 'buyer_agent', 'We want 150 baskets.');

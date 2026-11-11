@@ -90,13 +90,15 @@ npm test
 
 ## Deploy
 
-`render.yaml` is a Render blueprint for a single web service. Set `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` and `GEMINI_API_KEY` in the Render dashboard. The PayPal webhook is registered automatically at startup using the service's public URL.
+`render.yaml` is a Render blueprint for a single web service. Set `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `GEMINI_API_KEY` and `DATABASE_URL` in the Render dashboard. The PayPal webhook is registered automatically at startup using the service's public URL.
+
+`DATABASE_URL` must point at a Postgres server, for example a free Neon project. The embedded PGlite database is for local runs only: it needs roughly 600 to 900 MB of memory, more than a small hosted instance provides. The schema and demo data are created automatically on first start.
 
 ## Limitations
 
 - One product line per offer.
 - A single demo seller with no login; the seller and buyer views share one page.
-- Demo data is stored on the instance and is re-seeded when it restarts.
+- Local runs with the embedded database need about 1 GB of free memory.
 - A shared demo is limited to 30 new deals per hour to protect the AI key.
 
 ## Project layout

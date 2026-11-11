@@ -17,7 +17,8 @@ export interface Db {
 const here = dirname(fileURLToPath(import.meta.url));
 
 export async function openDb(opts: { url?: string; memory?: boolean } = {}): Promise<Db> {
-  const url = opts.url ?? process.env.DATABASE_URL;
+  // memory: true always means the embedded database, so tests can never touch DATABASE_URL by accident.
+  const url = opts.url ?? (opts.memory ? undefined : process.env.DATABASE_URL);
   let db: Db;
 
   if (url) {
@@ -25,7 +26,10 @@ export async function openDb(opts: { url?: string; memory?: boolean } = {}): Pro
     const pool = new pg.Pool({
       connectionString: url,
       ssl: process.env.PGSSL === '1' ? { rejectUnauthorized: false } : undefined,
+      max: 5,
     });
+    // A hosted database may close idle connections; without a listener that would crash the process.
+    pool.on('error', (e) => console.warn(`Postgres idle connection error: ${e.message}`));
     db = {
       kind: 'postgres',
       query: async <T>(sql: string, params?: unknown[]) => (await pool.query(sql, params)).rows as T[],

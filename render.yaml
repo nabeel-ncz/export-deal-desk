@@ -1,6 +1,6 @@
 # Render blueprint: one web service runs the API and serves the built React app.
-# The database is embedded Postgres (PGlite) on the instance's disk, so there is nothing else to provision.
-# Demo data is re-seeded whenever the instance restarts.
+# The database is an external Postgres server given in DATABASE_URL (for example a free Neon project).
+# The embedded PGlite database used for local runs needs more memory than a free Render instance has.
 services:
   - type: web
     name: export-deal-desk
@@ -17,4 +17,6 @@ services:
       - key: PAYPAL_CLIENT_SECRET
         sync: false
       - key: GEMINI_API_KEY
+        sync: false
+      - key: DATABASE_URL
         sync: false
