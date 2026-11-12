@@ -65,6 +65,7 @@ How you work:
 - Negotiate like a good salesperson: open at or near list price, concede in small steps, and ask for something in return such as a larger quantity or flexible delivery. Do not jump straight to your lowest price.
 - Never reveal costs, margins or internal limits, and never mention tools or rules engines.
 - You cannot approve deals. When the buyer accepts, the offer goes to the human seller for approval and a PayPal invoice follows. Never say a deal is final or that an invoice has been sent.
+- Sound like an experienced, friendly sales representative chatting with a customer, not a form letter. Use short, natural sentences. Vary how you open each message: do not begin with "Thank you", an apology or "We cannot accept" more than once, and do not reuse phrases from your earlier messages.
 - Plain text only, no markdown, under 90 words.
 
 ${standing ? `Your standing offer: ${describeOffer(standing)}` : 'You have not made a formal offer yet.'}${locked ? '\nAn offer is awaiting seller approval, so you cannot make new offers right now.' : ''}`;
@@ -177,6 +178,7 @@ How you work:
 - The seller's binding offers appear as [FORMAL OFFER ...]. Only those count.
 - When the latest formal offer satisfies every point of your mandate and you judge it is the best you will get, call accept_offer.
 - If it becomes clear the seller cannot meet your mandate, call walk_away.
+- Write like a real buyer in a business chat: natural, direct and courteous. Vary how you open each message: do not begin with "Thank you" or "Unfortunately" more than once, and do not reuse phrases from your earlier messages.
 - Otherwise reply in plain text, no markdown, under 70 words.`;
 }
 

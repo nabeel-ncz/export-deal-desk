@@ -7,7 +7,19 @@ interface Seller { name: string; city: string; country: string; max_discount_pct
 interface Product { id: number; sku: string; name: string; list_price: string; lowest_price: number; moq: number; lead_time_days: number }
 interface Catalog { seller: Seller; products: Product[] }
 interface Mandate { quantity: number; targetUnitPrice: number; maxUnitPrice: number; maxDeliveryDays: number; need?: string }
-interface ThreadRow { id: number; buyer_name: string; buyer_company: string | null; mode: 'human' | 'agent'; status: string; buyer_mandate?: Mandate | null }
+interface ThreadRow {
+  id: number; buyer_name: string; buyer_company: string | null; mode: 'human' | 'agent'; status: string; buyer_mandate?: Mandate | null;
+  created_at?: string; product_name?: string | null; quantity?: number | null; total?: string | null;
+}
+
+/** One line that tells deals from the same buyer apart: what was ordered, how much, and when. */
+function dealDetails(t: ThreadRow) {
+  const when = t.created_at ? new Date(t.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+  const what = t.product_name
+    ? `${t.product_name} · ${t.quantity} units · ${usd(t.total ?? 0)}`
+    : t.buyer_mandate?.quantity ? `${t.buyer_mandate.quantity} units requested · no offer yet` : 'New enquiry · no offer yet';
+  return [what, t.mode === 'agent' ? 'AI buyer' : 'Buyer typed by you', when].filter(Boolean).join(' · ');
+}
 interface Trace { tool: string; args: Record<string, any>; result: Record<string, any> }
 interface Offer { version: number; quantity: number; unitPrice: number; total: number; incoterm: string; deliveryDays: number; depositPct: number; depositAmount: number; productName: string }
 interface Msg { id: number; role: string; content: string; tool_trace: { trace?: Trace[]; offer?: Offer | null } | null }
@@ -34,29 +46,30 @@ function TraceLine({ t }: { t: Trace }) {
   if (t.tool === 'send_paypal_invoice') {
     const sent = t.result.sent === true;
     const what = t.result.amount ? `: ${usd(t.result.amount)} (${KIND[t.result.kind as keyof typeof KIND] ?? t.result.kind})` : '';
-    return <div className={`trace ${sent ? 'passed' : 'blocked'}`}>{sent ? `PayPal invoice sent by the agent${what}` : `PayPal invoice not sent. ${t.result.error ?? ''}`}</div>;
+    return <div className={`trace ${sent ? 'passed' : 'blocked'}`}>{sent ? `PayPal invoice sent${what}` : `PayPal invoice not sent. ${t.result.error ?? ''}`}</div>;
   }
   const blocked = t.result.accepted === false;
-  const terms = t.args.unit_price !== undefined ? `${t.args.quantity} units at ${usd(t.args.unit_price)}` : '';
+  const price = t.args.unit_price !== undefined ? ` · ${usd(t.args.unit_price)} per unit` : '';
   const reasons: string[] = (t.result.violations ?? []).map((v: { message: string }) => v.message).concat(t.result.reasons ?? []);
   const label =
-    t.tool === 'propose_offer' ? (blocked ? `Offer blocked by pricing rules: ${terms}.` : `Offer passed pricing rules: ${terms}`)
-    : t.tool === 'evaluate_terms' ? (blocked ? `Price check blocked: ${terms}.` : `Price check passed: ${terms}`)
-    : t.tool === 'accept_offer' ? (blocked ? "Acceptance blocked: outside the buyer's budget." : "Acceptance is within the buyer's budget")
-    : 'Buyer agent ended the negotiation';
+    t.tool === 'propose_offer' ? (blocked ? `Blocked by pricing rules${price}.` : `Pricing rules passed${price}`)
+    : t.tool === 'evaluate_terms' ? (blocked ? `Price blocked${price}.` : `Price check passed${price}`)
+    : t.tool === 'accept_offer' ? (blocked ? "Outside the buyer's budget." : "Within the buyer's budget")
+    : 'Buyer ended the negotiation';
   return <div className={`trace ${blocked ? 'blocked' : 'passed'}`}><span>{label} {reasons.join(' ')}</span></div>;
 }
 
 function Message({ m }: { m: Msg }) {
   if (m.role === 'system') return <div className={`note ${m.content.startsWith('Agent error') ? 'bad' : ''}`}>{m.content}</div>;
   const seller = m.role.startsWith('seller');
-  const who = m.role === 'seller_agent' ? 'Seller agent' : m.role === 'buyer_agent' ? 'Buyer agent' : 'Buyer';
+  const who = m.role === 'seller_agent' ? 'Seller AI' : m.role === 'buyer_agent' ? 'Buyer AI' : 'Buyer';
   const offer = m.tool_trace?.offer;
+  const trace = m.tool_trace?.trace ?? [];
   return (
     <div className={`msg ${seller ? 'seller' : 'buyer'}`}>
       <div className="who">{who}</div>
-      {m.tool_trace?.trace?.map((t, i) => <TraceLine key={i} t={t} />)}
       <div className="bubble">{m.content}</div>
+      {trace.length > 0 && <div className="activity" aria-label="System checks for this message">{trace.map((t, i) => <TraceLine key={i} t={t} />)}</div>}
       {offer && (
         <div className="offer-card">
           <div className="head"><span className="eyebrow">Formal offer v{offer.version}</span><b>{usd(offer.total)}</b></div>
@@ -152,7 +165,7 @@ function DealRoom({ id, catalog }: { id: number; catalog: Catalog | null }) {
       </div>
       <div className="roles" aria-label="Who is who in this deal">
         <span className="role you"><b>Seller · you</b>{catalog?.seller.name ?? 'The exporter'}: your AI sales agent negotiates, you approve</span>
-        <span className="role"><b>Buyer</b>{human ? 'You are also typing as the buyer in this demo' : `${thread.buyer_company ?? thread.buyer_name}: an AI purchasing agent with a budget`}</span>
+        <span className={`role ${human ? 'acting' : ''}`}><b>{human ? 'Buyer · also you' : 'Buyer'}</b>{human ? 'In this demo you type the buyer’s messages yourself' : `${thread.buyer_company ?? thread.buyer_name}: an AI purchasing agent with a budget`}</span>
       </div>
 
       <ol className="stepper" aria-label="Deal progress">
@@ -169,8 +182,9 @@ function DealRoom({ id, catalog }: { id: number; catalog: Catalog | null }) {
             <div ref={end} />
           </div>
           {human && thread.status === 'open' && (
-            <form onSubmit={(e) => { e.preventDefault(); if (reply.trim()) act(`/api/threads/${id}/messages`, { content: reply }).then(() => setReply('')); }}>
-              <label className="field" htmlFor="reply">Your reply as the buyer
+            <form className="buyer-box" onSubmit={(e) => { e.preventDefault(); if (reply.trim()) act(`/api/threads/${id}/messages`, { content: reply }).then(() => setReply('')); }}>
+              <span className="acting-tag">You are acting as the buyer</span>
+              <label className="field" htmlFor="reply">Your reply to the seller's AI sales agent
                 <textarea id="reply" value={reply} onChange={(e) => setReply(e.target.value)} maxLength={2000} placeholder="Ask for a better price, a different quantity, faster delivery…" />
               </label>
               <div className="actions">
@@ -187,7 +201,7 @@ function DealRoom({ id, catalog }: { id: number; catalog: Catalog | null }) {
               <p className="eyebrow"><b>Seller approval needed</b> · offer v{pending.version}</p>
               <h2>Approve this offer?</h2>
               <p className="figure">{usd(pending.total)}</p>
-              <p className="muted">The AI agents cannot approve a deal. Nothing is invoiced until you decide.</p>
+              <p className="muted">{human ? 'You are back in the seller’s role for this step. ' : ''}The AI agents cannot approve a deal. Nothing is invoiced until you decide.</p>
               {rail && (
                 <p className="protect">Price check passed: {usd(pending.unit_price)} per unit is at or above your lowest allowed price of {usd(rail.product.lowest_price)}.</p>
               )}
@@ -305,27 +319,32 @@ function Home({ catalog }: { catalog: Catalog | null }) {
     <>
       <div className="desk-head">
         <div><p className="eyebrow">Seller workspace{catalog ? ` · ${catalog.seller.name}` : ''}</p><h1>Start a deal.</h1></div>
-        <p className="muted" style={{ maxWidth: '30em' }}>You are the exporter. Your AI sales agent negotiates with the buyer inside your price rules, and you approve every offer before a PayPal invoice is sent.</p>
+        <p className="muted" style={{ maxWidth: '30em' }}>
+          {mode === 'agent'
+            ? 'You are the exporter. Your AI sales agent negotiates with the buyer inside your price rules, and you approve every offer before a PayPal invoice is sent.'
+            : 'For this demo you step across the table and write as the buyer. The deal still lands in this seller workspace, where the offer waits for the seller’s approval.'}
+        </p>
       </div>
       {error && <p className="banner" role="alert">{error}</p>}
 
       <div className="cols home">
-        <section className="panel accent">
-          <p className="eyebrow">New deal</p>
-          <div className="tabs" role="tablist" aria-label="Who plays the buyer">
-            <button role="tab" aria-selected={mode === 'agent'} onClick={() => setMode('agent')}>Two AI agents</button>
-            <button role="tab" aria-selected={mode === 'human'} onClick={() => setMode('human')}>I am the buyer</button>
+        <section className={`panel accent ${mode === 'human' ? 'as-buyer' : ''}`}>
+          <p className="eyebrow">Choose your demo experience</p>
+          <div className="tabs" role="tablist" aria-label="Choose your demo experience">
+            <button role="tab" aria-selected={mode === 'agent'} onClick={() => setMode('agent')}>AI buyer + AI seller</button>
+            <button role="tab" aria-selected={mode === 'human'} onClick={() => setMode('human')}>I'll act as the buyer</button>
           </div>
           {mode === 'agent' ? (
             <div role="tabpanel">
-              <p className="muted" style={{ marginTop: 12 }}>A US retailer's AI purchasing agent negotiates with your AI sales agent. Set the buyer's budget below, then watch and approve.</p>
+              <p className="muted" style={{ marginTop: 12 }}>Watch an overseas buyer's AI purchasing agent negotiate with your AI sales agent. You remain the seller and approve the final offer. The buyer's budget is below; change it if you like.</p>
               <div className="two">{field('quantity', 'Quantity', '1')}{field('maxDeliveryDays', 'Deliver within (days)', '1')}</div>
               <div className="two">{field('targetUnitPrice', 'Target price (USD)', '0.05')}{field('maxUnitPrice', 'Maximum price (USD)', '0.05')}</div>
               <div className="actions"><button className="btn thread" disabled={busy || !mandate} onClick={() => start({ mode: 'agent', mandate })}>{busy ? 'Starting…' : 'Start negotiation'} <Arrow /></button></div>
             </div>
           ) : (
             <div role="tabpanel">
-              <p className="callout"><b>Demo option: switch sides.</b> Here you play the overseas buyer and type to the exporter the way a real buyer would. The AI sales agent replies. When you accept an offer, you return to the seller's role to approve it.</p>
+              <p style={{ marginTop: 12 }}><span className="acting-tag">You are acting as the buyer</span></p>
+              <p className="callout">You're now the overseas buyer. Send your purchase requirements and negotiate with {catalog?.seller.name ?? 'the exporter'}'s AI sales agent. When you accept an offer, it still needs the seller's approval.</p>
               <label className="field" htmlFor="enquiry">Your enquiry
                 <textarea id="enquiry" value={message} onChange={(e) => setMessage(e.target.value)} maxLength={2000} />
               </label>
@@ -342,7 +361,7 @@ function Home({ catalog }: { catalog: Catalog | null }) {
           {threads?.map((t) => (
             <Link key={t.id} to={`/app/deals/${t.id}`} className="deal-row">
               <span className="id">#{t.id}</span>
-              <span className="name">{t.buyer_company ?? t.buyer_name}<small>{t.mode === 'agent' ? 'Buyer agent' : 'Human buyer'}</small></span>
+              <span className="name">{t.buyer_company ?? t.buyer_name}<small>{dealDetails(t)}</small></span>
               <StatusPill status={t.status} />
               <Arrow />
             </Link>

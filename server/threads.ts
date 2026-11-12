@@ -208,7 +208,17 @@ export function inBackground(db: Db, threadId: number, work: () => Promise<unkno
 }
 
 export async function listThreads(db: Db) {
-  return db.query('SELECT id, buyer_name, buyer_company, buyer_country, mode, status, created_at FROM buyer_threads ORDER BY id DESC');
+  // Each row carries the latest offer's product, quantity and total so the list can tell deals apart.
+  return db.query(
+    `SELECT t.id, t.buyer_name, t.buyer_company, t.buyer_country, t.mode, t.status, t.created_at, t.buyer_mandate,
+            lq.product_name, lq.quantity, lq.total
+     FROM buyer_threads t
+     LEFT JOIN LATERAL (
+       SELECT p.name AS product_name, i.quantity, q.total
+       FROM quote_drafts q JOIN quote_items i ON i.quote_id = q.id JOIN products p ON p.id = i.product_id
+       WHERE q.thread_id = t.id ORDER BY q.version DESC LIMIT 1
+     ) lq ON true
+     ORDER BY t.id DESC`);
 }
 
 export async function getThread(db: Db, threadId: number) {

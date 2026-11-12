@@ -155,7 +155,7 @@ export function Landing() {
               </p>
               <div className="hero-cta rise" style={{ '--i': 3 } as React.CSSProperties}>
                 <Link to="/app" className="btn thread lg">Open the seller workspace <Arrow /></Link>
-                <a href="#journey" className="btn ghost lg">See how a deal unfolds</a>
+                <a href="#journey" className="btn ghost lg">See a real deal example <Arrow /></a>
               </div>
               <div className="facts rise" style={{ '--i': 4 } as React.CSSProperties}>
                 <span>Buyer enquiry</span><span>AI negotiation</span><span><b>Seller approval</b></span><span>PayPal invoice</span><span>Verified payment</span>
@@ -265,24 +265,23 @@ export function Landing() {
         <section className="block">
           <div className="wrap">
             <p className="eyebrow reveal">Try it</p>
-            <h2 className="reveal" style={{ marginTop: 14 }}>One deal workspace, <em>two ways in.</em></h2>
-            <p className="intro reveal" style={{ maxWidth: '38em' }}>Both open the same seller workspace. The only difference is who plays the buyer. Either way, you approve the offer as the seller.</p>
+            <h2 className="reveal" style={{ marginTop: 14 }}>One deal workspace. <em>Two ways to experience it.</em></h2>
             <div className="doors">
               <Link to="/app?mode=agent" className="door card reveal">
                 <div>
-                  <p className="eyebrow"><b>Seller's view</b> · about a minute</p>
-                  <h3 style={{ marginTop: 12 }}>Watch your AI sales agent handle an AI buyer.</h3>
-                  <p className="muted" style={{ marginTop: 10 }}>A buyer's purchasing agent arrives with a budget. You watch, then approve.</p>
+                  <p className="eyebrow"><b>Recommended</b> · about a minute</p>
+                  <h3 style={{ marginTop: 12 }}>Watch AI negotiate.</h3>
+                  <p className="muted" style={{ marginTop: 10 }}>Your AI sales agent negotiates with an AI buyer. Watch the conversation, the pricing checks and the seller approval.</p>
                 </div>
                 <div className="go"><span>Start an AI-to-AI deal</span><Arrow /></div>
               </Link>
               <Link to="/app?mode=human" className="door card reveal">
                 <div>
-                  <p className="eyebrow"><b>Buyer's view</b> · your move</p>
-                  <h3 style={{ marginTop: 12 }}>Play the overseas buyer yourself.</h3>
-                  <p className="muted" style={{ marginTop: 10 }}>Type an enquiry and haggle with the AI sales agent, to see what a real buyer would see.</p>
+                  <p className="eyebrow">Hands-on</p>
+                  <h3 style={{ marginTop: 12 }}>Try it as a buyer.</h3>
+                  <p className="muted" style={{ marginTop: 10 }}>Send a purchase enquiry yourself and negotiate directly with the seller's AI sales agent.</p>
                 </div>
-                <div className="go"><span>Send an enquiry as the buyer</span><Arrow /></div>
+                <div className="go"><span>Send an enquiry as a buyer</span><Arrow /></div>
               </Link>
             </div>
           </div>
