@@ -74,9 +74,9 @@ Open http://localhost:3000. For development with hot reload, use `npm run dev` a
 
 ## Try the demo
 
-The landing page (`/`) replays a recorded Sandbox deal and explains the flow. The working app is the deal desk at `/app`.
+The landing page (`/`) replays a recorded Sandbox deal and explains the flow. The working app is the seller workspace at `/app`: one shared deal workspace seen from the exporter's side, with the buyer played either by an AI purchasing agent or by you.
 
-1. Open the deal desk and click **Start negotiation** on the **Two AI agents** tab. The two agents negotiate for about a minute. The conversation shows each pricing check, and the price rail plots every price that was asked for, blocked, offered or agreed against the seller's list price and lowest allowed price.
+1. Open the seller workspace and click **Start negotiation** on the **Two AI agents** tab. The two agents negotiate for about a minute. The conversation shows each price check, and the price protection panel plots every price that was asked for, blocked, offered or agreed against the seller's list price and lowest allowed price.
 2. When the buyer agent accepts, click **Approve offer** in the approval panel, which shows the total, discount and margin.
 3. The seller agent sends a Sandbox PayPal invoice for the advance. Click **Pay** next to it.
 4. Pay with a PayPal Sandbox **personal** account. If your Sandbox merchant is Indian, the buyer account must be from another country (for example the United States), because PayPal India does not accept domestic payments.

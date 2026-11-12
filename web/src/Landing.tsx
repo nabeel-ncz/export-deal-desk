@@ -13,7 +13,7 @@ type Ev = {
   who: 'buyer' | 'seller' | 'rule' | 'human' | 'paypal';
   text: string; stage: number; bad?: boolean; point?: RailPoint;
 };
-const WHO = { buyer: 'Buyer AI', seller: 'Seller AI', rule: 'Rules', human: 'Seller', paypal: 'PayPal' };
+const WHO = { buyer: 'Buyer AI', seller: 'Seller AI', rule: 'Price rules', human: 'Seller', paypal: 'PayPal' };
 const STAGES = ['Enquiry', 'Read', 'Bargain', 'Approve', 'Paid'];
 
 const EVENTS: Ev[] = [
@@ -23,7 +23,7 @@ const EVENTS: Ev[] = [
   { who: 'buyer', stage: 2, text: 'That is above our budget. Could you work with $14.20?', point: { value: 14.2, kind: 'ask' } },
   { who: 'rule', stage: 2, bad: true, text: '$14.20 exceeds the 5% discount cap. Blocked.', point: { value: 14.2, kind: 'blocked' } },
   { who: 'seller', stage: 2, text: '$14.20 is not possible. My best for 150 units is $15.30.', point: { value: 15.3, kind: 'offer' } },
-  { who: 'rule', stage: 2, text: 'Buyer agent accepts. $15.30 is inside its own mandate.', point: { value: 15.3, kind: 'agreed' } },
+  { who: 'rule', stage: 2, text: 'Buyer agent accepts. $15.30 is inside its own budget.', point: { value: 15.3, kind: 'agreed' } },
   { who: 'human', stage: 3, text: 'Seller reviews a 46.41% margin and approves offer v2.' },
   { who: 'paypal', stage: 4, text: 'Seller agent sends the PayPal invoice: $688.50 advance.' },
   { who: 'paypal', stage: 4, text: 'PayPal confirms the payment. Balance invoice issued.' },
@@ -77,21 +77,21 @@ function Replay() {
 
 const DECIDES: [string, string][] = [
   ['What to say, what to ask, what to try next', 'AI agents'],
-  ['Whether an offer is allowed, and every total, discount and margin', 'Code'],
-  ['Whether the buyer agent may accept', 'Code'],
-  ['Whether the deal goes ahead', 'The seller'],
+  ['Whether a price is allowed, and every total, discount and margin', 'Your price rules'],
+  ['Whether the buyer agent may accept', "The buyer's budget"],
+  ['Whether the deal goes ahead', 'You, the seller'],
   ['Whether the money has arrived', 'PayPal'],
 ];
 
 const CHECKS = [
-  'the model cannot quote below the minimum price',
-  'the model cannot exceed the permitted discount',
-  'buyer acceptance only queues the offer; approval is a separate human step',
-  'a quote the seller has not approved cannot be invoiced',
-  'an unverified webhook changes nothing and is not recorded',
-  'a duplicate webhook does not issue another invoice',
+  'the AI cannot quote below your minimum price',
+  'the AI cannot exceed your permitted discount',
+  "a buyer's acceptance only queues the offer; your approval is a separate step",
+  'an offer you have not approved cannot be invoiced',
+  'a forged payment notification changes nothing',
+  'a repeated payment notification does not issue a second invoice',
   'the order is paid only when PayPal confirms both invoices',
-  'withdrawing the quote cancels its unpaid PayPal invoice',
+  'withdrawing an offer cancels its unpaid PayPal invoice',
 ];
 
 export function Landing() {
@@ -131,9 +131,9 @@ export function Landing() {
           <Link to="/" aria-label="TradeThread home" style={{ textDecoration: 'none' }}><Logo /></Link>
           <nav className="nav-links" aria-label="Main">
             <a className="hide-sm" href="#journey">How it works</a>
-            <a className="hide-sm" href="#rules">Guardrails</a>
+            <a className="hide-sm" href="#rules">Who decides</a>
             <a className="hide-sm" href={REPO} target="_blank" rel="noreferrer">GitHub</a>
-            <Link to="/app" className="btn sm">Open the deal desk <Arrow /></Link>
+            <Link to="/app" className="btn sm">Seller workspace <Arrow /></Link>
           </nav>
         </div>
       </header>
@@ -144,23 +144,21 @@ export function Landing() {
             <div>
               <p className="eyebrow rise" style={{ '--i': 0 } as React.CSSProperties}>AI export deal desk · <b>PayPal Sandbox</b></p>
               <h1 className="rise" style={{ '--i': 1 } as React.CSSProperties}>
-                Every export deal hangs by a{' '}
-                <span className="thread-word">thread.
+                Turn overseas enquiries into paid orders, without giving away your{' '}
+                <span className="thread-word">margin.
                   <svg viewBox="0 0 300 30" preserveAspectRatio="none" aria-hidden="true"><path d="M4 18c40-16 70 14 110 2s70-16 100-4 60 8 82-6" /></svg>
                 </span>
               </h1>
               <p className="lede rise" style={{ '--i': 2 } as React.CSSProperties}>
-                TradeThread turns an overseas buyer's enquiry into a seller-approved offer and a paid PayPal invoice.
-                An AI agent runs the negotiation. It cannot break your price rules, approve its own deal, or decide that money has arrived.
+                TradeThread is a deal desk for exporters. An AI sales agent negotiates with your buyer, but it cannot go below your prices.
+                You approve every offer, and PayPal sends the invoice and confirms the payment.
               </p>
               <div className="hero-cta rise" style={{ '--i': 3 } as React.CSSProperties}>
-                <Link to="/app" className="btn thread lg">Open the deal desk <Arrow /></Link>
+                <Link to="/app" className="btn thread lg">Open the seller workspace <Arrow /></Link>
                 <a href="#journey" className="btn ghost lg">See how a deal unfolds</a>
               </div>
               <div className="facts rise" style={{ '--i': 4 } as React.CSSProperties}>
-                <span><b>2</b> agents, opposing mandates</span>
-                <span><b>28</b> guardrail tests</span>
-                <span>PayPal <b>Invoicing v2</b> + signed webhooks</span>
+                <span>Buyer enquiry</span><span>AI negotiation</span><span><b>Seller approval</b></span><span>PayPal invoice</span><span>Verified payment</span>
               </div>
             </div>
             <div className="rise" style={{ '--i': 3 } as React.CSSProperties}><Replay /></div>
@@ -216,7 +214,7 @@ export function Landing() {
               <article className={on(3)}>
                 <span className="node" /><p className="eyebrow"><b>04</b> · Approval</p>
                 <h3>A person says yes.</h3>
-                <p>Neither agent has a tool that approves a deal. The seller sees the price, the discount and the margin, and decides.</p>
+                <p>Neither AI agent is able to approve a deal. The seller sees the price, the discount and the margin, and decides.</p>
                 <div className="visual card reveal">
                   <dl className="kv" style={{ marginTop: 0 }}>
                     <div><dt>Order</dt><dd>150 × seagrass basket</dd></div>
@@ -233,7 +231,7 @@ export function Landing() {
               <article className={on(4)}>
                 <span className="node" /><p className="eyebrow"><b>05</b> · Payment</p>
                 <h3>PayPal has the last word.</h3>
-                <p>After approval the agent sends a PayPal invoice through a tool that carries no amounts. When PayPal confirms the advance, the balance invoice follows. An order is paid only when PayPal reports it paid.</p>
+                <p>After approval the agent sends a PayPal invoice. It can add a note, but it cannot set or change the amount. When PayPal confirms the advance, the balance invoice follows. An order is paid only when PayPal reports it paid.</p>
                 <div className="visual card reveal">
                   <div className="scroll">
                     <table>
@@ -252,7 +250,7 @@ export function Landing() {
 
         <section className="block night" id="rules">
           <div className="wrap">
-            <p className="eyebrow reveal">Guardrails</p>
+            <p className="eyebrow reveal">Who decides what</p>
             <h2 className="reveal" style={{ marginTop: 14, maxWidth: '14em' }}>The AI negotiates. It never <em>decides.</em></h2>
             <div className="decide reveal">
               {DECIDES.map(([what, who]) => (
@@ -267,15 +265,24 @@ export function Landing() {
         <section className="block">
           <div className="wrap">
             <p className="eyebrow reveal">Try it</p>
-            <h2 className="reveal" style={{ marginTop: 14 }}>Open a deal and <em>pull the thread.</em></h2>
+            <h2 className="reveal" style={{ marginTop: 14 }}>One deal workspace, <em>two ways in.</em></h2>
+            <p className="intro reveal" style={{ maxWidth: '38em' }}>Both open the same seller workspace. The only difference is who plays the buyer. Either way, you approve the offer as the seller.</p>
             <div className="doors">
               <Link to="/app?mode=agent" className="door card reveal">
-                <div><p className="eyebrow">About a minute</p><h3 style={{ marginTop: 12 }}>Watch two AI agents negotiate.</h3></div>
-                <div className="go"><span>Run an agent-to-agent deal</span><Arrow /></div>
+                <div>
+                  <p className="eyebrow"><b>Seller's view</b> · about a minute</p>
+                  <h3 style={{ marginTop: 12 }}>Watch your AI sales agent handle an AI buyer.</h3>
+                  <p className="muted" style={{ marginTop: 10 }}>A buyer's purchasing agent arrives with a budget. You watch, then approve.</p>
+                </div>
+                <div className="go"><span>Start an AI-to-AI deal</span><Arrow /></div>
               </Link>
               <Link to="/app?mode=human" className="door card reveal">
-                <div><p className="eyebrow">Your move</p><h3 style={{ marginTop: 12 }}>Negotiate as the buyer yourself.</h3></div>
-                <div className="go"><span>Send an enquiry</span><Arrow /></div>
+                <div>
+                  <p className="eyebrow"><b>Buyer's view</b> · your move</p>
+                  <h3 style={{ marginTop: 12 }}>Play the overseas buyer yourself.</h3>
+                  <p className="muted" style={{ marginTop: 10 }}>Type an enquiry and haggle with the AI sales agent, to see what a real buyer would see.</p>
+                </div>
+                <div className="go"><span>Send an enquiry as the buyer</span><Arrow /></div>
               </Link>
             </div>
           </div>

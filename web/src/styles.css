@@ -125,7 +125,7 @@ em { font-style: italic; }
 
 .hero { padding: clamp(36px, 7vw, 92px) 0 clamp(48px, 7vw, 96px); }
 .hero-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(32px, 5vw, 64px); align-items: center; }
-.hero h1 { font-size: clamp(50px, 8.6vw, 116px); line-height: 0.92; margin: 20px 0 26px; }
+.hero h1 { font-size: clamp(40px, 5.6vw, 78px); line-height: 0.98; margin: 20px 0 26px; }
 .hero h1 .thread-word { position: relative; display: inline-block; font-style: italic; color: var(--thread-deep); }
 .hero h1 .thread-word svg { position: absolute; left: -4%; bottom: -0.16em; width: 108%; height: 0.3em; overflow: visible; }
 .hero h1 .thread-word path { fill: none; stroke: var(--thread); stroke-width: 5; stroke-linecap: round; stroke-dasharray: 520; stroke-dashoffset: 520; animation: draw 1.5s 0.7s var(--ease) forwards; }
@@ -213,6 +213,15 @@ dl { margin: 0; }
 .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: clamp(16px, 2.2vw, 24px); min-width: 0; }
 .panel h2 { font-size: 27px; margin: 4px 0 6px; }
 .panel.accent { border-top: 3px solid var(--thread); }
+.panel.decision { border: 2px solid var(--thread); box-shadow: var(--shadow); }
+.roles { display: flex; flex-wrap: wrap; gap: 8px; margin: -6px 0 18px; }
+.role { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); font-size: 13.5px; color: var(--ink-2); }
+.role b { font: 500 11px/1.5 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.role.you { border-color: var(--thread); }
+.role.you b { color: var(--thread-deep); }
+.protect { display: flex; gap: 10px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--ok) 11%, transparent); font-size: 13.5px; line-height: 1.45; }
+.protect::before { content: '✓'; color: var(--ok); font-weight: 600; }
+.callout { margin-top: 12px; padding: 12px 14px; border-left: 3px solid var(--indigo); border-radius: 0 10px 10px 0; background: color-mix(in srgb, var(--indigo) 7%, transparent); font-size: 14px; line-height: 1.5; }
 .banner { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--bad); color: var(--bad); background: var(--bad-soft); font-size: 14px; margin-bottom: 16px; }
 
 .tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 4px; gap: 4px; background: var(--paper-2); border-radius: 12px; margin: 14px 0 6px; }

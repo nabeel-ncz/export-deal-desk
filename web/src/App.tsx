@@ -41,8 +41,8 @@ function TraceLine({ t }: { t: Trace }) {
   const reasons: string[] = (t.result.violations ?? []).map((v: { message: string }) => v.message).concat(t.result.reasons ?? []);
   const label =
     t.tool === 'propose_offer' ? (blocked ? `Offer blocked by pricing rules: ${terms}.` : `Offer passed pricing rules: ${terms}`)
-    : t.tool === 'evaluate_terms' ? (blocked ? `Rule check failed: ${terms}.` : `Rule check passed: ${terms}`)
-    : t.tool === 'accept_offer' ? (blocked ? 'Acceptance blocked by the buyer mandate.' : 'Acceptance is within the buyer mandate')
+    : t.tool === 'evaluate_terms' ? (blocked ? `Price check blocked: ${terms}.` : `Price check passed: ${terms}`)
+    : t.tool === 'accept_offer' ? (blocked ? "Acceptance blocked: outside the buyer's budget." : "Acceptance is within the buyer's budget")
     : 'Buyer agent ended the negotiation';
   return <div className={`trace ${blocked ? 'blocked' : 'passed'}`}><span>{label} {reasons.join(' ')}</span></div>;
 }
@@ -138,16 +138,21 @@ function DealRoom({ id, catalog }: { id: number; catalog: Catalog | null }) {
   const human = thread.mode === 'human';
   const stage = thread.status === 'paid' ? 5 : liveInvoices.length ? 3 : pending || approved ? 2 : quotes.length ? 1 : 0;
   const rail = railFor(d, catalog);
+  const blockedCount = rail?.points.filter((p) => p.kind === 'blocked').length ?? 0;
 
   return (
     <>
       <Link to="/app" className="back">← All deals</Link>
       <div className="desk-head" style={{ marginTop: 14 }}>
         <div>
-          <p className="eyebrow">Deal #{thread.id} · {human ? 'Human buyer' : 'Buyer agent'}</p>
+          <p className="eyebrow">Seller workspace · Deal #{thread.id}</p>
           <h1>{thread.buyer_company ?? thread.buyer_name}</h1>
         </div>
         <StatusPill status={thread.status} />
+      </div>
+      <div className="roles" aria-label="Who is who in this deal">
+        <span className="role you"><b>Seller · you</b>{catalog?.seller.name ?? 'The exporter'}: your AI sales agent negotiates, you approve</span>
+        <span className="role"><b>Buyer</b>{human ? 'You are also typing as the buyer in this demo' : `${thread.buyer_company ?? thread.buyer_name}: an AI purchasing agent with a budget`}</span>
       </div>
 
       <ol className="stepper" aria-label="Deal progress">
@@ -178,10 +183,14 @@ function DealRoom({ id, catalog }: { id: number; catalog: Catalog | null }) {
 
         <div className="stack side">
           {pending && (
-            <section className="panel accent">
-              <p className="eyebrow"><b>Your decision</b> · offer v{pending.version}</p>
+            <section className="panel accent decision">
+              <p className="eyebrow"><b>Seller approval needed</b> · offer v{pending.version}</p>
+              <h2>Approve this offer?</h2>
               <p className="figure">{usd(pending.total)}</p>
-              <p className="muted">The agents cannot approve a deal. Nothing is invoiced until you decide.</p>
+              <p className="muted">The AI agents cannot approve a deal. Nothing is invoiced until you decide.</p>
+              {rail && (
+                <p className="protect">Price check passed: {usd(pending.unit_price)} per unit is at or above your lowest allowed price of {usd(rail.product.lowest_price)}.</p>
+              )}
               <dl className="kv">
                 <div><dt>Order</dt><dd>{pending.quantity} × {pending.product_name}</dd></div>
                 <div><dt>Unit price</dt><dd className="num">{usd(pending.unit_price)}</dd></div>
@@ -249,7 +258,11 @@ function DealRoom({ id, catalog }: { id: number; catalog: Catalog | null }) {
 
           {rail && (
             <section className="panel">
-              <p className="eyebrow">Price rail · {rail.product.sku}</p>
+              <p className="eyebrow"><b>Price protection</b> · {rail.product.name}</p>
+              <p className="muted" style={{ fontSize: 13.5, margin: '6px 0 0' }}>
+                Your AI sales agent cannot offer below {usd(rail.product.lowest_price)}.
+                {' '}{blockedCount > 0 ? `${blockedCount} ${blockedCount === 1 ? 'price was' : 'prices were'} blocked in this deal.` : 'No price has been blocked in this deal.'}
+              </p>
               <PriceRail list={Number(rail.product.list_price)} floor={Number(rail.product.lowest_price)} points={rail.points} />
             </section>
           )}
@@ -291,8 +304,8 @@ function Home({ catalog }: { catalog: Catalog | null }) {
   return (
     <>
       <div className="desk-head">
-        <div><p className="eyebrow">Deal desk</p><h1>Start a deal.</h1></div>
-        <p className="muted" style={{ maxWidth: '30em' }}>Run a negotiation between two AI agents, or step in as the buyer. You approve every offer before PayPal is involved.</p>
+        <div><p className="eyebrow">Seller workspace{catalog ? ` · ${catalog.seller.name}` : ''}</p><h1>Start a deal.</h1></div>
+        <p className="muted" style={{ maxWidth: '30em' }}>You are the exporter. Your AI sales agent negotiates with the buyer inside your price rules, and you approve every offer before a PayPal invoice is sent.</p>
       </div>
       {error && <p className="banner" role="alert">{error}</p>}
 
@@ -305,14 +318,14 @@ function Home({ catalog }: { catalog: Catalog | null }) {
           </div>
           {mode === 'agent' ? (
             <div role="tabpanel">
-              <p className="muted" style={{ marginTop: 12 }}>A US retailer's purchasing agent negotiates with your sales agent. Set what its employer allows it to accept.</p>
+              <p className="muted" style={{ marginTop: 12 }}>A US retailer's AI purchasing agent negotiates with your AI sales agent. Set the buyer's budget below, then watch and approve.</p>
               <div className="two">{field('quantity', 'Quantity', '1')}{field('maxDeliveryDays', 'Deliver within (days)', '1')}</div>
               <div className="two">{field('targetUnitPrice', 'Target price (USD)', '0.05')}{field('maxUnitPrice', 'Maximum price (USD)', '0.05')}</div>
               <div className="actions"><button className="btn thread" disabled={busy || !mandate} onClick={() => start({ mode: 'agent', mandate })}>{busy ? 'Starting…' : 'Start negotiation'} <Arrow /></button></div>
             </div>
           ) : (
             <div role="tabpanel">
-              <p className="muted" style={{ marginTop: 12 }}>Write to the exporter the way a real buyer would. The seller agent replies.</p>
+              <p className="callout"><b>Demo option: switch sides.</b> Here you play the overseas buyer and type to the exporter the way a real buyer would. The AI sales agent replies. When you accept an offer, you return to the seller's role to approve it.</p>
               <label className="field" htmlFor="enquiry">Your enquiry
                 <textarea id="enquiry" value={message} onChange={(e) => setMessage(e.target.value)} maxLength={2000} />
               </label>
@@ -338,9 +351,10 @@ function Home({ catalog }: { catalog: Catalog | null }) {
       </div>
 
       {catalog && (
-        <section className="panel" style={{ marginTop: 18 }}>
-          <p className="eyebrow">Seller rules</p>
-          <h2>Lines the agent cannot cross</h2>
+        <section className="panel accent" style={{ marginTop: 18 }}>
+          <p className="eyebrow"><b>Your price protection</b></p>
+          <h2>Limits your AI sales agent cannot cross</h2>
+          <p className="muted" style={{ maxWidth: '46em' }}>These limits are checked by the system on every offer, not left to the AI. An offer below the lowest allowed price is blocked before the buyer sees it.</p>
           <div className="chips">
             <span className="pill plain">Max discount {Number(catalog.seller.max_discount_pct)}%</span>
             <span className="pill plain">Advance {Number(catalog.seller.deposit_pct)}%</span>
@@ -349,7 +363,7 @@ function Home({ catalog }: { catalog: Catalog | null }) {
           </div>
           <div className="scroll">
             <table>
-              <thead><tr><th>SKU</th><th>Product</th><th className="n">List</th><th className="n">Lowest allowed</th><th className="n">Min order</th><th className="n">Lead time</th></tr></thead>
+              <thead><tr><th>Code</th><th>Product</th><th className="n">List price</th><th className="n">Lowest allowed</th><th className="n">Min order</th><th className="n">Lead time</th></tr></thead>
               <tbody>
                 {catalog.products.map((p) => (
                   <tr key={p.id}><td className="num">{p.sku}</td><td>{p.name}</td><td className="n">{usd(p.list_price)}</td><td className="n">{usd(p.lowest_price)}</td><td className="n">{p.moq}</td><td className="n">{p.lead_time_days} days</td></tr>
@@ -375,8 +389,9 @@ export function Desk({ path }: { path: string }) {
         <div className="wrap">
           <Link to="/" aria-label="TradeThread home" style={{ textDecoration: 'none' }}><Logo /></Link>
           <div className="who">
+            <span className="pill plain">Seller workspace</span>
             {catalog && <span className="name hide-sm">{catalog.seller.name} · {catalog.seller.city}</span>}
-            <span className="pill live">Sandbox</span>
+            <span className="pill live hide-sm">PayPal Sandbox</span>
             {dealId > 0 && <Link to="/app" className="btn ghost sm hide-sm">All deals</Link>}
           </div>
         </div>
